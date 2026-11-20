@@ -1,0 +1,245 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --font-sans: 'Outfit', system-ui, sans-serif;
+  --color-paper: #efe6d6;
+  --color-paper-deep: #e3d5bf;
+  --color-foam: #f7f1e6;
+  --color-ink: #1d1814;
+  --color-ink-soft: #5e564c;
+  --color-studio: #0f5e56;
+  --color-studio-deep: #0b3f3b;
+  --color-coral: #e36a3a;
+  --color-line: #e4d6c3;
+}
+
+html.dark {
+  --color-paper: #14110e;
+  --color-paper-deep: #2a231c;
+  --color-foam: #1c1814;
+  --color-ink: #f4ece1;
+  --color-ink-soft: #cbbba8;
+  --color-studio: #1f8f84;
+  --color-studio-deep: #15756c;
+  --color-coral: #f08458;
+  --color-line: #3c332b;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background-color: var(--color-paper);
+  background-image: radial-gradient(rgba(90, 58, 24, 0.045) 0.7px, transparent 0.7px);
+  background-size: 8px 8px;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  overscroll-behavior: none;
+}
+
+html.dark body {
+  background-image: radial-gradient(rgba(255, 236, 210, 0.04) 0.7px, transparent 0.7px);
+}
+
+button,
+input {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.studio-action,
+.icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  color: var(--color-ink);
+}
+
+.studio-action {
+  height: 2.25rem;
+  padding-inline: 0.8rem;
+  background: var(--color-ink);
+  color: var(--color-foam);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.icon-action {
+  height: 2.25rem;
+  width: 2.25rem;
+}
+
+.studio-action:hover,
+.icon-action:hover:not(:disabled) {
+  background: var(--color-paper-deep);
+}
+
+.studio-action:hover {
+  background: var(--color-studio-deep);
+}
+
+.collection-action {
+  background: var(--color-studio);
+}
+
+.collection-action:hover {
+  background: var(--color-studio-deep);
+}
+
+html.dark .memito-cat .cat-whisker {
+  stroke: #e6d8c8;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+#root {
+  user-select: none;
+}
+
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+.animate-wiggle {
+  animation: wiggle 0.42s ease;
+}
+
+.memito-cat .cat-sit {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: cat-sit 3.4s ease-in-out infinite;
+}
+
+.memito-cat .cat-tail {
+  transform-box: fill-box;
+  transform-origin: 12% 82%;
+  animation: cat-tail 2.15s ease-in-out infinite;
+}
+
+.memito-cat .cat-ear {
+  transform-box: fill-box;
+  transform-origin: 70% 100%;
+  animation: cat-ear 5.8s ease-in-out infinite;
+}
+
+.memito-cat .cat-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cat-blink 4.6s linear infinite;
+}
+
+.memito-cat .cat-eye-late {
+  animation-delay: 0.07s;
+}
+
+@keyframes cat-sit {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(1px);
+  }
+}
+
+@keyframes cat-tail {
+  0%,
+  100% {
+    transform: rotate(8deg);
+  }
+  50% {
+    transform: rotate(-22deg);
+  }
+}
+
+@keyframes cat-ear {
+  0%,
+  64%,
+  100% {
+    transform: rotate(0deg);
+  }
+  70% {
+    transform: rotate(-14deg);
+  }
+  76% {
+    transform: rotate(4deg);
+  }
+  82% {
+    transform: rotate(-7deg);
+  }
+}
+
+@keyframes cat-blink {
+  0%,
+  7%,
+  42%,
+  49%,
+  100% {
+    transform: scaleY(1);
+  }
+  3.5%,
+  45.5% {
+    transform: scaleY(0.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .memito-cat .cat-sit {
+    animation: cat-sit 3.4s ease-in-out infinite !important;
+  }
+
+  .memito-cat .cat-tail {
+    animation: cat-tail 2.15s ease-in-out infinite !important;
+  }
+
+  .memito-cat .cat-ear {
+    animation: cat-ear 5.8s ease-in-out infinite !important;
+  }
+
+  .memito-cat .cat-eye {
+    animation: cat-blink 4.6s linear infinite !important;
+  }
+}
