@@ -20,7 +20,10 @@ export function WelcomeScreen() {
       <div className="mx-auto flex min-h-full max-w-5xl flex-col justify-center px-5 py-10">
         <p className="text-xs font-medium tracking-[0.22em] text-studio uppercase">Estudio</p>
         <h1 className="mt-2 max-w-xl font-display text-4xl leading-tight sm:text-5xl">
-          Una foto, una paleta, un número por cada mancha.
+          Un espacio para no pensar...
+          <span className="mt-2 block text-lg leading-snug font-normal text-ink-soft sm:text-xl">
+            (por ejemplo en que tiene que ir a la salita)
+          </span>
         </h1>
         <p className="mt-3 max-w-lg text-sm leading-relaxed text-ink-soft sm:text-base">
           Subí una imagen o probá un estudio ya armado. La conversión corre en segundo plano: cuantiza el color,
