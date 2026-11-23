@@ -36,6 +36,7 @@ export function RoomScene() {
   const bumpFrames = useRoomStore((state) => state.bumpFrames)
   const project = usePaintStore((state) => state.project)
   const role = useLiveStore((state) => state.role)
+  const roomName = useLiveStore((state) => state.roomName)
   const ownerOnline = useLiveStore((state) => state.ownerOnline)
   const guestOnline = useLiveStore((state) => state.guestOnline)
   const [frames, setFrames] = useState<Array<FrameView | null>>([null, null, null])
@@ -82,9 +83,9 @@ export function RoomScene() {
 
   return (
     <div className="relative flex h-dvh flex-col bg-paper">
-      <RoomHeader title="La habitación" />
+      <RoomHeader />
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col overflow-auto px-4 py-5 pb-36">
-        <p className="text-xs font-medium tracking-[0.22em] text-studio uppercase">Habitación</p>
+        <p className="text-xs font-medium tracking-[0.22em] text-studio uppercase">{roomName || 'Habitación'}</p>
         <h1 className="mt-2 max-w-xl font-display text-4xl leading-tight">
           Un lugar para quedarse un rato.
         </h1>

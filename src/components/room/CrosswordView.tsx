@@ -3,11 +3,14 @@ import { CLUES, COLS, ROWS, buildSolution, cellNumber, type Clue } from '../../d
 import { useLiveStore } from '../../room/live.ts'
 import { RoomHeader } from './RoomHeader.tsx'
 
-const STORAGE_KEY = 'atelier-crucigrama'
+function storageKey(roomId: string) {
+  return `atelier-crucigrama:${roomId}`
+}
 
-function loadLetters() {
+function loadLetters(roomId: string) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey(roomId))
+      ?? (roomId && roomId === localStorage.getItem('atelier-legacy-room') ? localStorage.getItem('atelier-crucigrama') : null)
     if (!raw) return {}
     const parsed = JSON.parse(raw) as Record<string, string>
     return parsed && typeof parsed === 'object' ? parsed : {}
@@ -18,23 +21,29 @@ function loadLetters() {
 
 export function CrosswordView() {
   const solution = useMemo(() => buildSolution(), [])
+  const roomId = useLiveStore((state) => state.roomId) ?? ''
   const shared = useLiveStore((state) => state.crossword)
   const setShared = useLiveStore((state) => state.setCrossword)
-  const [letters, setLetters] = useState<Record<string, string>>(loadLetters)
+  const [letters, setLetters] = useState<Record<string, string>>(() => loadLetters(roomId))
+  const loadedRoom = useRef(roomId)
   const [selected, setSelected] = useState({ row: 0, col: 0 })
   const [direction, setDirection] = useState<Clue['direction']>('across')
   const [checked, setChecked] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const edited = useRef(false)
 
-  if (shared && !edited.current && JSON.stringify(shared) !== JSON.stringify(letters)) setLetters(shared)
+  if (loadedRoom.current !== roomId) {
+    loadedRoom.current = roomId
+    edited.current = false
+    setLetters(loadLetters(roomId))
+  } else if (shared && !edited.current && JSON.stringify(shared) !== JSON.stringify(letters)) setLetters(shared)
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(letters))
+    if (roomId) localStorage.setItem(storageKey(roomId), JSON.stringify(letters))
     if (!edited.current || !shared) return
     edited.current = false
     setShared(letters)
-  }, [letters, setShared, shared])
+  }, [letters, roomId, setShared, shared])
 
   const wordsAt = (row: number, col: number) => CLUES.filter((clue) => clueOwns(clue, row, col))
 

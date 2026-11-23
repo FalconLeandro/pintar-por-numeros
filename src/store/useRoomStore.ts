@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { loadTracks, type TrackRecord } from '../utils/roomDb.ts'
+import type { TrackRecord } from '../utils/roomDb.ts'
 
 export type RoomPlace = 'room' | 'paint' | 'drawer' | 'crossword'
 
@@ -42,8 +42,3 @@ export const useRoomStore = create<RoomStore>((set) => ({
   setTransport: (patch) => set(patch),
   setPlayerOpen: (playerOpen) => set({ playerOpen }),
 }))
-
-void loadTracks().then((tracks) => {
-  const current = useRoomStore.getState().currentId
-  useRoomStore.setState({ tracks, currentId: current ?? tracks[0]?.videoId ?? null })
-})

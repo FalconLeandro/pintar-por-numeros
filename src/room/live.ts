@@ -2,14 +2,35 @@ import { create } from 'zustand'
 import { onSharedImage } from './events.ts'
 import { adoptSharedProject, applyRemoteMask, isStrokeActive, onPaintSettled, usePaintStore } from '../store/usePaintStore.ts'
 import { useRoomStore } from '../store/useRoomStore.ts'
-import { cacheSharedRecord, listPhotos, listWorks, loadFrames, saveFrames, type FrameSlot } from '../utils/roomDb.ts'
+import {
+  cacheSharedRecord,
+  legacyRoomId,
+  listPhotos,
+  listWorks,
+  loadFrames,
+  loadTracks,
+  markLegacyRoom,
+  saveFrames,
+  setRoomScope,
+  type FrameSlot,
+} from '../utils/roomDb.ts'
 import type { ProjectData } from '../types.ts'
 
 const OWNER_KEY = 'atelier-owner'
 const GUEST_KEY = 'atelier-guest'
 const CLIENT_KEY = 'atelier-client'
+const ROOMS_KEY = 'atelier-rooms'
+const CURRENT_KEY = 'atelier-current'
 
 export type LiveRole = 'owner' | 'guest'
+export type DoorMode = 'create' | 'enter'
+
+export interface Membership {
+  id: string
+  role: LiveRole
+  token: string
+  name: string
+}
 
 interface Playback {
   videoId: string | null
@@ -29,17 +50,25 @@ interface SharedImage {
 interface LiveStore {
   ready: boolean
   admitted: boolean
-  exists: boolean
   role: LiveRole | null
   error: string | null
   ownerOnline: boolean
   guestOnline: boolean
   crossword: Record<string, string> | null
   followNonce: number
+  roomId: string | null
+  roomName: string
+  memberships: Membership[]
+  mode: DoorMode
+  pendingCode: string
   boot: () => Promise<void>
-  createRoom: (keyword: string) => Promise<void>
-  enter: (keyword: string) => Promise<void>
+  createRoom: (keyword: string, name: string) => Promise<void>
+  enter: (keyword: string, code: string) => Promise<void>
   changeKeyword: (keyword: string) => Promise<void>
+  renameRoom: (name: string) => Promise<void>
+  openRoom: (roomId: string) => Promise<void>
+  showCreate: () => void
+  showEnter: () => void
   setCrossword: (letters: Record<string, string>) => void
 }
 
@@ -55,65 +84,93 @@ let following = false
 let pushTimer = 0
 let pending: Record<string, unknown> = {}
 let lastMask = ''
+let roomPaintId: string | null = null
+let allowSeed = false
 let stopPaint = () => {}
+let stopImage = () => {}
 let stopRoom = () => {}
 let pollTimer = 0
+let syncStarted = false
+let booting: Promise<void> | null = null
 
 export const useLiveStore = create<LiveStore>((set, get) => ({
   ready: false,
   admitted: false,
-  exists: false,
   role: null,
   error: null,
   ownerOnline: false,
   guestOnline: false,
   crossword: null,
   followNonce: 0,
-  boot: async () => {
-    try {
-      const status = await call({ action: 'status' })
-      const ownerToken = localStorage.getItem(OWNER_KEY)
-      if (ownerToken) {
-        try {
-          await call({ action: 'enter', ownerToken })
-          set({ ready: true, admitted: true, exists: true, role: 'owner', error: null })
-          await startSync()
-          return
-        } catch {
-          localStorage.removeItem(OWNER_KEY)
-        }
-      }
-      const guest = localStorage.getItem(GUEST_KEY)
-      if (guest && status.exists) {
-        try {
-          await call({ action: 'pull' }, guest)
-          set({ ready: true, admitted: true, exists: true, role: 'guest', error: null })
-          await startSync()
-          return
-        } catch {
-          localStorage.removeItem(GUEST_KEY)
-        }
-      }
-      set({ ready: true, admitted: false, exists: Boolean(status.exists), role: null })
-    } catch (error) {
-      set({ ready: true, error: messageOf(error) })
-    }
+  roomId: null,
+  roomName: '',
+  memberships: loadMemberships(),
+  mode: 'create',
+  pendingCode: '',
+  boot: () => {
+    if (booting) return booting
+    booting = runBoot().finally(() => {
+      booting = null
+    })
+    return booting
   },
-  createRoom: async (keyword) => {
+  createRoom: async (keyword, name) => {
     const ownerToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '')
-    await call({ action: 'create', keyword, ownerToken })
-    localStorage.setItem(OWNER_KEY, ownerToken)
-    set({ admitted: true, exists: true, role: 'owner', error: null })
-    await startSync()
+    const result = await call({ action: 'create', keyword, name, ownerToken })
+    const member: Membership = {
+      id: String(result.roomId),
+      role: 'owner',
+      token: ownerToken,
+      name: String(result.name ?? 'Mi habitación'),
+    }
+    upsertMembership(member)
+    await openMembership(member, false)
   },
-  enter: async (keyword) => {
-    const result = await call({ action: 'enter', keyword })
-    if (result.role === 'guest' && result.token) localStorage.setItem(GUEST_KEY, String(result.token))
-    set({ admitted: true, exists: true, role: result.role === 'owner' ? 'owner' : 'guest', error: null })
-    await startSync()
+  enter: async (keyword, code) => {
+    const owned = loadMemberships().find((item) => item.id === code && item.role === 'owner')
+    if (owned) {
+      await openMembership(owned, owned.id === legacyRoomId())
+      return
+    }
+    const result = await call({ action: 'enter', keyword, roomId: code })
+    const member: Membership = {
+      id: code,
+      role: result.role === 'owner' ? 'owner' : 'guest',
+      token: result.role === 'guest' ? String(result.token) : localOwnerToken(code),
+      name: String(result.name ?? 'Mi habitación'),
+    }
+    if (!member.token) throw new Error('No pude abrir la puerta')
+    upsertMembership(member)
+    await openMembership(member, false)
   },
   changeKeyword: async (keyword) => {
     await call({ action: 'keyword', keyword })
+  },
+  renameRoom: async (name) => {
+    const result = await call({ action: 'rename', name })
+    const roomId = get().roomId
+    const next = String(result.name ?? 'Mi habitación')
+    if (!roomId) return
+    const rows = loadMemberships().map((item) => (item.id === roomId ? { ...item, name: next } : item))
+    localStorage.setItem(ROOMS_KEY, JSON.stringify(rows))
+    set({ roomName: next, memberships: rows })
+  },
+  openRoom: async (roomId) => {
+    const member = loadMemberships().find((item) => item.id === roomId)
+    if (!member) throw new Error('No encontré esa habitación.')
+    await openMembership(member, member.role === 'owner' && member.id === legacyRoomId())
+  },
+  showCreate: () => {
+    stopSync()
+    clearSala()
+    useRoomStore.getState().go('room')
+    set({ admitted: false, role: null, mode: 'create', pendingCode: '', error: null })
+  },
+  showEnter: () => {
+    stopSync()
+    clearSala()
+    useRoomStore.getState().go('room')
+    set({ admitted: false, role: null, mode: 'enter', pendingCode: '', error: null })
   },
   setCrossword: (letters) => {
     set({ crossword: letters })
@@ -122,20 +179,163 @@ export const useLiveStore = create<LiveStore>((set, get) => ({
   },
 }))
 
+async function runBoot() {
+  try {
+    const code = salaFromLocation()
+    let memberships = loadMemberships()
+    if (!memberships.length) {
+      const legacy = localStorage.getItem(OWNER_KEY)
+      if (legacy) {
+        try {
+          const found = await call({ action: 'recover', ownerToken: legacy })
+          const member: Membership = {
+            id: String(found.roomId),
+            role: 'owner',
+            token: legacy,
+            name: String(found.name ?? 'Mi habitación'),
+          }
+          markLegacyRoom(member.id)
+          memberships = upsertMembership(member)
+          localStorage.removeItem(OWNER_KEY)
+        } catch {
+          localStorage.removeItem(OWNER_KEY)
+        }
+      }
+    }
+    localStorage.removeItem(GUEST_KEY)
+    if (code) {
+      const member = memberships.find((item) => item.id === code)
+      if (member) {
+        await openMembership(member, member.role === 'owner' && member.id === legacyRoomId())
+        return
+      }
+      useLiveStore.setState({ ready: true, admitted: false, mode: 'enter', pendingCode: code, memberships, error: null })
+      return
+    }
+    const current = localStorage.getItem(CURRENT_KEY)
+    const member = memberships.find((item) => item.id === current) ?? memberships[0]
+    if (member) {
+      await openMembership(member, member.role === 'owner' && member.id === legacyRoomId())
+      return
+    }
+    useLiveStore.setState({ ready: true, admitted: false, mode: 'create', pendingCode: '', memberships, error: null })
+  } catch (error) {
+    useLiveStore.setState({ ready: true, error: messageOf(error) })
+  }
+}
+
+async function openMembership(member: Membership, seed: boolean) {
+  stopSync()
+  allowSeed = seed
+  setRoomScope(member.id)
+  rememberSala(member.id)
+  localStorage.setItem(CURRENT_KEY, member.id)
+  roomPaintId = null
+  const tracks = seed ? await loadTracks() : []
+  useRoomStore.setState({
+    tracks,
+    currentId: tracks[0]?.videoId ?? null,
+    playing: false,
+    startedAt: 0,
+    position: 0,
+    place: 'room',
+  })
+  useLiveStore.setState({
+    ready: true,
+    admitted: true,
+    role: member.role,
+    roomId: member.id,
+    roomName: member.name,
+    memberships: loadMemberships(),
+    error: null,
+    crossword: null,
+    ownerOnline: false,
+    guestOnline: false,
+  })
+  await startSync()
+}
+
+function loadMemberships(): Membership[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ROOMS_KEY) || '[]') as Membership[]
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item) => item && typeof item.id === 'string' && typeof item.token === 'string' && item.token)
+  } catch {
+    return []
+  }
+}
+
+function upsertMembership(member: Membership) {
+  const rows = [member, ...loadMemberships().filter((item) => item.id !== member.id)]
+  localStorage.setItem(ROOMS_KEY, JSON.stringify(rows))
+  useLiveStore.setState({ memberships: rows })
+  return rows
+}
+
+function dropMembership(roomId: string) {
+  const rows = loadMemberships().filter((item) => item.id !== roomId)
+  localStorage.setItem(ROOMS_KEY, JSON.stringify(rows))
+  useLiveStore.setState({ memberships: rows })
+  return rows
+}
+
+function localOwnerToken(roomId: string) {
+  return loadMemberships().find((item) => item.id === roomId && item.role === 'owner')?.token ?? ''
+}
+
+function salaFromLocation() {
+  const value = new URLSearchParams(location.search).get('sala')?.trim().toLowerCase() ?? ''
+  return /^[a-z0-9]{8}$/.test(value) ? value : ''
+}
+
+function rememberSala(roomId: string) {
+  const url = new URL(location.href)
+  url.searchParams.set('sala', roomId)
+  history.replaceState(null, '', url)
+}
+
+function clearSala() {
+  const url = new URL(location.href)
+  url.searchParams.delete('sala')
+  history.replaceState(null, '', url)
+}
+
+export function inviteUrl(roomId: string) {
+  const url = new URL(location.href)
+  url.search = ''
+  url.searchParams.set('sala', roomId)
+  return url.toString()
+}
+
 function authToken() {
-  if (useLiveStore.getState().role === 'guest') return localStorage.getItem(GUEST_KEY)
-  return localStorage.getItem(OWNER_KEY)
+  const { roomId } = useLiveStore.getState()
+  return loadMemberships().find((item) => item.id === roomId)?.token ?? null
 }
 
 async function call(body: Record<string, unknown>, token = authToken()) {
+  const roomless = body.action === 'create' || body.action === 'recover'
+  const roomId = roomless ? undefined : (body.roomId ?? useLiveStore.getState().roomId)
   const headers: Record<string, string> = { 'content-type': 'application/json' }
-  if (token) headers.authorization = `Bearer ${token}`
-  const response = await fetch('/api/room', { method: 'POST', headers, body: JSON.stringify({ ...body, clientId }) })
+  if (token && body.action !== 'create') headers.authorization = `Bearer ${token}`
+  const response = await fetch('/api/room', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ...body, clientId, ...(roomId ? { roomId } : {}) }),
+  })
   const data = (await response.json()) as Record<string, unknown>
   if (!response.ok) {
-    if (response.status === 401 && useLiveStore.getState().admitted) {
-      localStorage.removeItem(GUEST_KEY)
-      useLiveStore.setState({ admitted: false, role: null, error: 'La palabra cambió. Volvé a entrar.' })
+    const current = useLiveStore.getState()
+    if (response.status === 401 && current.admitted && current.roomId) {
+      dropMembership(current.roomId)
+      stopSync()
+      useRoomStore.getState().go('room')
+      useLiveStore.setState({
+        admitted: false,
+        role: null,
+        mode: 'enter',
+        pendingCode: current.roomId,
+        error: 'La palabra cambió. Volvé a entrar.',
+      })
     }
     throw new Error(typeof data.error === 'string' ? data.error : 'No pude hablar con la habitación')
   }
@@ -163,13 +363,28 @@ async function flush() {
   }
 }
 
-let syncStarted = false
+function stopSync() {
+  syncStarted = false
+  allowSeed = false
+  window.clearInterval(pollTimer)
+  window.clearTimeout(pushTimer)
+  pending = {}
+  lastMask = ''
+  roomPaintId = null
+  stopPaint()
+  stopImage()
+  stopRoom()
+  stopPaint = () => {}
+  stopImage = () => {}
+  stopRoom = () => {}
+}
 
 async function startSync() {
   if (syncStarted) return
   syncStarted = true
   window.clearInterval(pollTimer)
   stopPaint()
+  stopImage()
   stopRoom()
   try {
     await pull(true)
@@ -192,11 +407,11 @@ async function startSync() {
     }
   })
   stopPaint = onPaintSettled(() => void sharePaint())
-  onSharedImage((image) => void publishImage(image.kind, image.id, image.name, image.percent, image.blob))
+  stopImage = onSharedImage((image) => void publishImage(image.kind, image.id, image.name, image.percent, image.blob))
   pollTimer = window.setInterval(() => void pull(false), 1000)
 }
 
-async function pull(seed: boolean) {
+async function pull(initial: boolean) {
   const data = await call({ action: 'pull' })
   clockOffset = Number(data.serverNow) - Date.now()
   const body = data.body as {
@@ -206,16 +421,23 @@ async function pull(seed: boolean) {
     crossword: Record<string, string>
     paint: { shareId: string; name: string; percent: number; mask: string; ready: boolean } | null
   }
+  const roomId = useLiveStore.getState().roomId
+  if (typeof data.name === 'string' && roomId) {
+    const rows = loadMemberships().map((item) => (item.id === roomId ? { ...item, name: data.name as string } : item))
+    localStorage.setItem(ROOMS_KEY, JSON.stringify(rows))
+    useLiveStore.setState({ roomName: data.name, memberships: rows })
+  }
   useLiveStore.setState({
     ownerOnline: Boolean(data.ownerOnline),
     guestOnline: Boolean(data.guestOnline),
     error: null,
   })
+  const seed = initial && allowSeed
   const local = useRoomStore.getState()
   if (seed && body.tracks.length === 0 && local.tracks.length > 0) queue({ tracks: local.tracks, playback: playbackFromStore() })
   else applyPlayback(body.playback, body.tracks, String(data.updatedBy ?? ''))
   if (seed && Object.keys(body.crossword).length === 0) {
-    const saved = localCrossword()
+    const saved = localCrossword(roomId)
     if (Object.keys(saved).length) queue({ crossword: saved })
     else useLiveStore.setState({ crossword: {} })
   } else if (JSON.stringify(body.crossword) !== JSON.stringify(useLiveStore.getState().crossword)) {
@@ -275,14 +497,16 @@ async function applyFrames(frames: FrameSlot[]) {
 const imageStamps = new Map<string, number>()
 
 async function applyImages(images: SharedImage[]) {
+  const roomId = useLiveStore.getState().roomId ?? ''
   let changed = false
   for (const image of images) {
     const stamp = Number(image.updated_at)
-    if (imageStamps.get(image.id) === stamp) continue
+    const key = `${roomId}:${image.id}`
+    if (imageStamps.get(key) === stamp) continue
     const row = await call({ action: 'image-get', id: image.id })
     const blob = await (await fetch(String(row.image))).blob()
     await cacheSharedRecord(image.kind, image.id, String(row.name), Number(row.percent) || 0, blob)
-    imageStamps.set(image.id, stamp)
+    imageStamps.set(key, stamp)
     changed = true
   }
   if (changed) {
@@ -292,6 +516,7 @@ async function applyImages(images: SharedImage[]) {
 }
 
 async function applyPaint(paint: { shareId: string; name: string; percent: number; mask: string; ready: boolean } | null, seed: boolean) {
+  roomPaintId = paint?.shareId ?? null
   if (!paint) return
   const local = usePaintStore.getState().project
   if (!local) {
@@ -312,6 +537,8 @@ async function sharePaint() {
   if (suppress || !useLiveStore.getState().admitted) return
   const { project, painted, globalFilled } = usePaintStore.getState()
   if (!project || !painted) return
+  if (roomPaintId && project.shareId !== roomPaintId) return
+  if (!roomPaintId && !allowSeed && useLiveStore.getState().role !== 'owner') return
   const mask = bytesToBase64(painted)
   if (mask === lastMask) return
   const previous = lastMask ? base64ToBytes(lastMask) : null
@@ -335,8 +562,9 @@ async function sharePaint() {
 const uploaded = new Set<string>()
 
 async function uploadProject(project: ProjectData) {
-  if (uploaded.has(project.shareId)) return
-  uploaded.add(project.shareId)
+  const key = `${useLiveStore.getState().roomId}:${project.shareId}`
+  if (uploaded.has(key)) return
+  uploaded.add(key)
   const parts: Record<string, Uint8Array | Uint8ClampedArray> = {
     regionMap: new Uint8Array(project.regionMap.buffer, project.regionMap.byteOffset, project.regionMap.byteLength),
     pixelOffsets: new Uint8Array(project.pixelOffsets.buffer, project.pixelOffsets.byteOffset, project.pixelOffsets.byteLength),
@@ -388,9 +616,10 @@ async function loadPart(shareId: string, part: string) {
   return chunks.map((chunk) => chunk.data).join('')
 }
 
-function localCrossword() {
+function localCrossword(roomId: string | null) {
   try {
-    const raw = localStorage.getItem('atelier-crucigrama')
+    const scoped = roomId ? localStorage.getItem(`atelier-crucigrama:${roomId}`) : null
+    const raw = scoped ?? (roomId && roomId === legacyRoomId() ? localStorage.getItem('atelier-crucigrama') : null)
     return raw ? (JSON.parse(raw) as Record<string, string>) : {}
   } catch {
     return {}
@@ -437,7 +666,7 @@ function blobToDataUrl(blob: Blob) {
 function bytesToBase64(bytes: Uint8Array | Uint8ClampedArray) {
   let binary = ''
   for (let index = 0; index < bytes.length; index += 0x4000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x4000))
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
   }
   return btoa(binary)
 }

@@ -1,11 +1,13 @@
 import { Archive, Download, Eye, Home, ImagePlus, Library, LocateFixed, Redo2, SlidersHorizontal, Undo2 } from 'lucide-react'
 import { ThemeToggle } from './ThemeToggle.tsx'
 import { exportPainting } from '../utils/exportPng.ts'
+import { useLiveStore } from '../room/live.ts'
 import { usePaintStore } from '../store/usePaintStore.ts'
 import { useRoomStore } from '../store/useRoomStore.ts'
 
 export function TopBar() {
   const project = usePaintStore((state) => state.project)
+  const roomName = useLiveStore((state) => state.roomName)
   const globalFilled = usePaintStore((state) => state.globalFilled)
   const canUndo = usePaintStore((state) => state.canUndo)
   const canRedo = usePaintStore((state) => state.canRedo)
@@ -41,9 +43,9 @@ export function TopBar() {
           </span>
           <div className="flex min-w-0 items-center gap-1.5">
             <div className="min-w-0">
-              <p className="truncate font-display text-lg leading-none sm:text-xl">El Atelier de Memito</p>
+              <p className="truncate font-display text-lg leading-none sm:text-xl">My Room</p>
               <p className="truncate text-[11px] tracking-wide text-ink-soft">
-                {project ? project.name : 'Pintar por números'}
+                {[roomName || 'Mi habitación', project ? project.name : 'Pintar por números'].join(' · ')}
               </p>
             </div>
             <BlackCat />

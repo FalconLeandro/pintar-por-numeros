@@ -97,7 +97,7 @@ export default function App() {
     return (
       <div className="grid h-dvh place-items-center bg-paper">
         <div className="text-center">
-          <p className="font-display text-4xl">El Atelier de Memito</p>
+          <p className="font-display text-4xl">My Room</p>
           <p className="mt-2 text-sm text-ink-soft">Preparando la habitación…</p>
         </div>
       </div>
