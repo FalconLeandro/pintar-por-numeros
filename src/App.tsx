@@ -9,6 +9,8 @@ import { DrawerView } from './components/room/DrawerView.tsx'
 import { RecordPlayer } from './components/room/RecordPlayer.tsx'
 import { RoomScene } from './components/room/RoomScene.tsx'
 import { TopBar } from './components/TopBar.tsx'
+import { Door } from './components/room/Door.tsx'
+import { useLiveStore } from './room/live.ts'
 import { usePaintStore } from './store/usePaintStore.ts'
 import { useRoomStore } from './store/useRoomStore.ts'
 
@@ -20,8 +22,15 @@ export default function App() {
   const error = usePaintStore((state) => state.error)
   const notice = usePaintStore((state) => state.notice)
   const place = useRoomStore((state) => state.place)
+  const sessionReady = useLiveStore((state) => state.ready)
+  const admitted = useLiveStore((state) => state.admitted)
+  const boot = useLiveStore((state) => state.boot)
   const [dragOver, setDragOver] = useState(false)
   const dragDepth = useRef(0)
+
+  useEffect(() => {
+    void boot()
+  }, [boot])
 
   useEffect(() => {
     const typing = (target: EventTarget | null) => {
@@ -84,7 +93,7 @@ export default function App() {
     }
   }, [])
 
-  if (!hydrated) {
+  if (!hydrated || !sessionReady) {
     return (
       <div className="grid h-dvh place-items-center bg-paper">
         <div className="text-center">
@@ -94,6 +103,8 @@ export default function App() {
       </div>
     )
   }
+
+  if (!admitted) return <Door />
 
   return (
     <div

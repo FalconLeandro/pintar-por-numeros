@@ -20,6 +20,7 @@ export interface RegionInfo {
 
 export interface ProjectData {
   token: number
+  shareId: string
   name: string
   width: number
   height: number

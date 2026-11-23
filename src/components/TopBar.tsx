@@ -1,4 +1,4 @@
-import { Download, Eye, Home, ImagePlus, Library, LocateFixed, Redo2, SlidersHorizontal, Undo2 } from 'lucide-react'
+import { Archive, Download, Eye, Home, ImagePlus, Library, LocateFixed, Redo2, SlidersHorizontal, Undo2 } from 'lucide-react'
 import { ThemeToggle } from './ThemeToggle.tsx'
 import { exportPainting } from '../utils/exportPng.ts'
 import { usePaintStore } from '../store/usePaintStore.ts'
@@ -13,6 +13,7 @@ export function TopBar() {
   const openCollection = usePaintStore((state) => state.openCollection)
   const setCompareHeld = usePaintStore((state) => state.setCompareHeld)
   const requestHint = usePaintStore((state) => state.requestHint)
+  const saveToDrawer = usePaintStore((state) => state.saveToDrawer)
   const undo = usePaintStore((state) => state.undo)
   const redo = usePaintStore((state) => state.redo)
   const setError = usePaintStore((state) => state.setError)
@@ -87,6 +88,9 @@ export function TopBar() {
             onPointerCancel={() => setCompareHeld(false)}
           >
             <Eye size={16} />
+          </button>
+          <button type="button" className="icon-action" onClick={() => void saveToDrawer()} disabled={!project} title="Guardar en el cajón" aria-label="Guardar en el cajón">
+            <Archive size={16} />
           </button>
           <button type="button" className="icon-action" onClick={() => void onExport()} disabled={!project} title="Exportar PNG sin bordes ni números">
             <Download size={16} />

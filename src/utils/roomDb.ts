@@ -7,6 +7,8 @@ export interface WorkRecord {
   name: string
   createdAt: number
   blob: Blob
+  /** 100 means every region is painted. Older saves omit it and were stored only when finished. */
+  percent?: number
 }
 
 export interface PhotoRecord {
@@ -53,6 +55,20 @@ function txDone(tx: IDBTransaction) {
   })
 }
 
+export async function cacheSharedRecord(kind: 'work' | 'photo', id: string, name: string, percent: number, blob: Blob) {
+  const db = await openDb()
+  const tx = db.transaction(kind === 'work' ? 'works' : 'photos', 'readwrite')
+  if (kind === 'work') {
+    const record: WorkRecord = { id, token: 0, name, createdAt: Date.now(), blob, percent }
+    tx.objectStore('works').put(record)
+  } else {
+    const record: PhotoRecord = { id, name, createdAt: Date.now(), blob }
+    tx.objectStore('photos').put(record)
+  }
+  await txDone(tx)
+  db.close()
+}
+
 export async function listWorks() {
   const db = await openDb()
   const tx = db.transaction('works', 'readonly')
@@ -62,19 +78,34 @@ export async function listWorks() {
   return rows.sort((a, b) => b.createdAt - a.createdAt)
 }
 
-export async function upsertWork(input: { token: number; name: string; blob: Blob }) {
+export function workPercent(work: Pick<WorkRecord, 'percent'>) {
+  return work.percent ?? 100
+}
+
+export function workIsComplete(work: Pick<WorkRecord, 'percent'>) {
+  return workPercent(work) >= 100
+}
+
+export async function upsertWork(input: { token: number; name: string; blob: Blob; percent: number }) {
   const db = await openDb()
-  const tx = db.transaction('works', 'readwrite')
+  const tx = db.transaction(['works', 'meta'], 'readwrite')
   const store = tx.objectStore('works')
   const rows = await requestToPromise(store.getAll() as IDBRequest<WorkRecord[]>)
   const existing = rows.find((row) => row.token === input.token)
   const record: WorkRecord = existing
-    ? { ...existing, name: input.name, blob: input.blob, createdAt: Date.now() }
-    : { id: crypto.randomUUID(), token: input.token, name: input.name, blob: input.blob, createdAt: Date.now() }
+    ? { ...existing, name: input.name, blob: input.blob, percent: input.percent, createdAt: Date.now() }
+    : { id: crypto.randomUUID(), token: input.token, name: input.name, blob: input.blob, percent: input.percent, createdAt: Date.now() }
   store.put(record)
+  if (input.percent < 100) {
+    const frames = ((await requestToPromise(tx.objectStore('meta').get('frames'))) as FrameSlot[] | undefined) ?? EMPTY_FRAMES
+    tx.objectStore('meta').put(
+      frames.map((slot) => (slot?.kind === 'work' && slot.id === record.id ? null : slot)),
+      'frames',
+    )
+  }
   await txDone(tx)
   db.close()
-  return existing ? 'updated' : 'created'
+  return { status: existing ? 'updated' as const : 'created' as const, id: record.id }
 }
 
 export async function deleteWork(id: string) {

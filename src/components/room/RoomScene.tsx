@@ -3,6 +3,9 @@ import { BookOpen, Disc3, Frame, Paintbrush } from 'lucide-react'
 import { BlackCat } from '../TopBar.tsx'
 import { RoomHeader } from './RoomHeader.tsx'
 import { usePaintStore } from '../../store/usePaintStore.ts'
+import { publishFrames } from '../../room/live.ts'
+import { useLiveStore } from '../../room/live.ts'
+import { emitSharedImage } from '../../room/events.ts'
 import { useRoomStore } from '../../store/useRoomStore.ts'
 import {
   getPhoto,
@@ -12,6 +15,8 @@ import {
   loadFrames,
   saveFrames,
   savePhoto,
+  workIsComplete,
+  workPercent,
   type FrameSlot,
   type PhotoRecord,
   type WorkRecord,
@@ -30,6 +35,9 @@ export function RoomScene() {
   const worksVersion = useRoomStore((state) => state.worksVersion)
   const bumpFrames = useRoomStore((state) => state.bumpFrames)
   const project = usePaintStore((state) => state.project)
+  const role = useLiveStore((state) => state.role)
+  const ownerOnline = useLiveStore((state) => state.ownerOnline)
+  const guestOnline = useLiveStore((state) => state.guestOnline)
   const [frames, setFrames] = useState<Array<FrameView | null>>([null, null, null])
   const [editing, setEditing] = useState<number | null>(null)
   const [viewing, setViewing] = useState<FrameView | null>(null)
@@ -80,6 +88,11 @@ export function RoomScene() {
         <h1 className="mt-2 max-w-xl font-display text-4xl leading-tight">
           Un lugar para quedarse un rato.
         </h1>
+        <p className="mt-2 text-sm text-ink-soft">
+          {role === 'owner' ? 'Sos el dueño de la palabra.' : 'Entraste como invitado.'}
+          {role === 'owner' && guestOnline ? ' Hay un invitado ahora.' : ''}
+          {role === 'guest' && ownerOnline ? ' El dueño está ahora.' : ''}
+        </p>
         <section className="relative mt-6 rounded-t-[2rem] border border-b-0 border-line bg-paper-deep px-4 pt-6 pb-8">
           <div className="grid gap-4 sm:grid-cols-3">
             {frames.map((frame, index) => (
@@ -124,6 +137,7 @@ export function RoomScene() {
             const next = await loadFrames()
             next[editing] = slot
             await saveFrames(next)
+            void publishFrames()
             bumpFrames()
             setEditing(null)
           }}
@@ -155,6 +169,7 @@ export function RoomScene() {
                       const index = next.findIndex((slot) => slot?.id === viewing.slot.id && slot.kind === viewing.slot.kind)
                       if (index >= 0) next[index] = null
                       await saveFrames(next)
+                      void publishFrames()
                       bumpFrames()
                       setViewing(null)
                     })
@@ -199,7 +214,7 @@ function FrameSheet({ index, onClose, onPick }: { index: number; onClose: () => 
             Cerrar
           </button>
         </div>
-        <p className="mt-1 text-sm text-ink-soft">Colgá una obra del cajón o una foto.</p>
+        <p className="mt-1 text-sm text-ink-soft">Colgá una obra al 100 % o una foto.</p>
         <label className="mt-4 inline-flex cursor-pointer rounded-full bg-ink px-4 py-2 text-sm text-foam">
           Subir foto
           <input
@@ -209,20 +224,39 @@ function FrameSheet({ index, onClose, onPick }: { index: number; onClose: () => 
             onChange={(event) => {
               const file = event.target.files?.[0]
               if (!file) return
-              void savePhoto(file).then((photo) => onPick({ kind: 'photo', id: photo.id }))
+              void savePhoto(file).then((photo) => {
+                emitSharedImage({ kind: 'photo', id: photo.id, name: photo.name, percent: 100, blob: photo.blob })
+                void onPick({ kind: 'photo', id: photo.id })
+              })
             }}
           />
         </label>
         <h3 className="mt-5 text-sm font-medium">Cajón</h3>
         <ul className="mt-2 space-y-1">
-          {works.map((work) => (
-            <li key={work.id}>
-              <button type="button" className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-paper" onClick={() => void onPick({ kind: 'work', id: work.id })}>
-                {work.name}
-              </button>
-            </li>
-          ))}
-          {works.length === 0 && <li className="text-sm text-ink-soft">Todavía no hay obras terminadas.</li>}
+          {works.map((work) => {
+            const complete = workIsComplete(work)
+            return (
+              <li key={work.id}>
+                <button
+                  type="button"
+                  className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-paper disabled:cursor-not-allowed disabled:text-ink-soft disabled:hover:bg-transparent"
+                  disabled={!complete}
+                  title={complete ? 'Colgar esta obra' : 'Se cuelga al 100 %'}
+                  onClick={() => {
+                    if (!complete) return
+                    void onPick({ kind: 'work', id: work.id })
+                  }}
+                >
+                  {work.name}
+                  <span className="ml-2 text-xs text-ink-soft">{workPercent(work)} %</span>
+                </button>
+              </li>
+            )
+          })}
+          {works.length === 0 && <li className="text-sm text-ink-soft">El cajón está vacío.</li>}
+          {works.length > 0 && works.every((work) => !workIsComplete(work)) && (
+            <li className="px-3 text-xs text-ink-soft">Ninguna está al 100 % todavía.</li>
+          )}
         </ul>
         {photos.length > 0 && (
           <>

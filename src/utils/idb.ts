@@ -6,6 +6,7 @@ const KEY = 'current'
 
 export interface ProjectSave {
   version: 1
+  shareId?: string
   name: string
   width: number
   height: number
@@ -71,6 +72,7 @@ export async function clearProject() {
 export function projectToSave(project: ProjectData, painted: Uint8Array, activeColor: number): ProjectSave {
   return {
     version: 1,
+    shareId: project.shareId,
     name: project.name,
     width: project.width,
     height: project.height,

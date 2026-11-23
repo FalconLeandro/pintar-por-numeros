@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CLUES, COLS, ROWS, buildSolution, cellNumber, type Clue } from '../../data/crossword.ts'
+import { useLiveStore } from '../../room/live.ts'
 import { RoomHeader } from './RoomHeader.tsx'
 
 const STORAGE_KEY = 'atelier-crucigrama'
@@ -17,15 +18,23 @@ function loadLetters() {
 
 export function CrosswordView() {
   const solution = useMemo(() => buildSolution(), [])
+  const shared = useLiveStore((state) => state.crossword)
+  const setShared = useLiveStore((state) => state.setCrossword)
   const [letters, setLetters] = useState<Record<string, string>>(loadLetters)
   const [selected, setSelected] = useState({ row: 0, col: 0 })
   const [direction, setDirection] = useState<Clue['direction']>('across')
   const [checked, setChecked] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const edited = useRef(false)
+
+  if (shared && !edited.current && JSON.stringify(shared) !== JSON.stringify(letters)) setLetters(shared)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(letters))
-  }, [letters])
+    if (!edited.current || !shared) return
+    edited.current = false
+    setShared(letters)
+  }, [letters, setShared, shared])
 
   const wordsAt = (row: number, col: number) => CLUES.filter((clue) => clueOwns(clue, row, col))
 
@@ -59,6 +68,7 @@ export function CrosswordView() {
 
   function write(letter: string) {
     const key = `${selected.row},${selected.col}`
+    edited.current = true
     setLetters((current) => ({ ...current, [key]: letter.toUpperCase() }))
     setChecked(false)
     move(1)
@@ -67,6 +77,7 @@ export function CrosswordView() {
   function erase() {
     const key = `${selected.row},${selected.col}`
     if (letters[key]) {
+      edited.current = true
       setLetters((current) => ({ ...current, [key]: '' }))
       setChecked(false)
       return

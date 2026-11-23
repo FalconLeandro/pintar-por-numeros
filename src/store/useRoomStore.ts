@@ -10,6 +10,8 @@ interface RoomStore {
   tracks: TrackRecord[]
   currentId: string | null
   playing: boolean
+  startedAt: number
+  position: number
   playerOpen: boolean
   go: (place: RoomPlace) => void
   bumpWorks: () => void
@@ -17,6 +19,7 @@ interface RoomStore {
   setTracks: (tracks: TrackRecord[]) => void
   setCurrent: (videoId: string | null) => void
   setPlaying: (playing: boolean) => void
+  setTransport: (patch: { startedAt?: number; position?: number }) => void
   setPlayerOpen: (open: boolean) => void
 }
 
@@ -27,6 +30,8 @@ export const useRoomStore = create<RoomStore>((set) => ({
   tracks: [],
   currentId: null,
   playing: false,
+  startedAt: 0,
+  position: 0,
   playerOpen: false,
   go: (place) => set({ place }),
   bumpWorks: () => set((state) => ({ worksVersion: state.worksVersion + 1 })),
@@ -34,6 +39,7 @@ export const useRoomStore = create<RoomStore>((set) => ({
   setTracks: (tracks) => set({ tracks }),
   setCurrent: (currentId) => set({ currentId }),
   setPlaying: (playing) => set({ playing }),
+  setTransport: (patch) => set(patch),
   setPlayerOpen: (playerOpen) => set({ playerOpen }),
 }))
 

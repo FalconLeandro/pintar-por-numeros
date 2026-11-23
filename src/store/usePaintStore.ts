@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { ProjectData, Tool, ViewCommand, WorkerDone, WorkerIn, WorkerOut } from '../types.ts'
-import { archiveWork } from '../room/archiveWork.ts'
+import { archiveWork, completionPercent } from '../room/archiveWork.ts'
 import { clearProject, loadProject, projectToSave, saveProject } from '../utils/idb.ts'
 
 interface ProcessingState {
@@ -65,6 +65,7 @@ interface PaintStore {
   beginStroke: () => void
   paintRegion: (id: number) => boolean
   endStroke: () => void
+  saveToDrawer: () => Promise<void>
   undo: () => void
   redo: () => void
   discard: () => void
@@ -118,6 +119,23 @@ function flash(notice: string) {
   }, 4600)
 }
 
+let paintListener: (() => void) | null = null
+
+export function onPaintSettled(listener: () => void) {
+  paintListener = listener
+  return () => {
+    if (paintListener === listener) paintListener = null
+  }
+}
+
+export function isStrokeActive() {
+  return strokeActive
+}
+
+function notifyPaint() {
+  paintListener?.()
+}
+
 function scheduleSave() {
   window.clearTimeout(saveTimer)
   saveTimer = window.setTimeout(() => {
@@ -153,6 +171,7 @@ function projectFromDone(data: WorkerDone, meta: PendingJob): ProjectData {
   tokenSeq += 1
   return {
     token: tokenSeq,
+    shareId: crypto.randomUUID(),
     name: meta.name,
     width: data.width,
     height: data.height,
@@ -190,6 +209,7 @@ function adoptProject(project: ProjectData, painted = new Uint8Array(project.reg
     restored: false,
   })
   scheduleSave()
+  notifyPaint()
 }
 
 function onWorkerMessage(data: WorkerOut) {
@@ -234,6 +254,35 @@ function applySnapshot(snapshot: Uint8Array) {
     historyEpoch: usePaintStore.getState().historyEpoch + 1,
     canUndo: history.length > 0,
     canRedo: future.length > 0,
+  })
+  scheduleSave()
+  notifyPaint()
+}
+
+export function adoptSharedProject(project: ProjectData, painted: Uint8Array) {
+  const copy = new Uint8Array(painted.byteLength)
+  copy.set(painted)
+  adoptProject(project, copy)
+}
+
+export function applyRemoteMask(mask: Uint8Array) {
+  if (strokeActive) return
+  const { project, painted } = usePaintStore.getState()
+  if (!project || !painted || mask.length !== painted.length) return
+  let changed = false
+  for (let index = 0; index < mask.length; index += 1) {
+    if (painted[index] !== mask[index]) {
+      changed = true
+      break
+    }
+  }
+  if (!changed) return
+  painted.set(mask)
+  const progress = recompute(project, painted)
+  usePaintStore.setState({
+    filled: progress.filled,
+    globalFilled: progress.globalFilled,
+    paintedVersion: usePaintStore.getState().paintedVersion + 1,
   })
   scheduleSave()
 }
@@ -371,15 +420,22 @@ export const usePaintStore = create<PaintStore>((set, get) => ({
       nextColor = nextIncomplete(filled, project.totals, activeColor)
     }
     set({ activeColor: nextColor, canUndo: history.length > 0, canRedo: false })
-    if (globalFilled >= project.pixelCount && project.pixelCount > 0) {
-      const painted = get().painted
-      if (painted) {
-        void archiveWork(project, painted)
-          .then((result) => flash(result === 'updated' ? 'Actualicé la obra del cajón.' : 'La obra quedó en el cajón.'))
-          .catch(() => flash('La obra está completa. No pude guardarla en el cajón.'))
-      }
-    }
+    if (globalFilled >= project.pixelCount && project.pixelCount > 0) void get().saveToDrawer()
     scheduleSave()
+    notifyPaint()
+  },
+
+  saveToDrawer: async () => {
+    const { project, painted, globalFilled } = get()
+    if (!project || !painted) return
+    const percent = completionPercent(globalFilled, project.pixelCount)
+    try {
+      const result = await archiveWork(project, painted, percent)
+      if (percent >= 100) flash(result.status === 'updated' ? 'Actualicé la obra del cajón.' : 'La obra quedó en el cajón.')
+      else flash(result.status === 'updated' ? `Actualicé el cajón (${percent} %).` : `Guardé la obra en el cajón (${percent} %).`)
+    } catch {
+      flash('No pude guardar la obra en el cajón.')
+    }
   },
 
   undo: () => {
@@ -474,6 +530,7 @@ void (async () => {
     tokenSeq += 1
     const project: ProjectData = {
       token: tokenSeq,
+      shareId: save.shareId || crypto.randomUUID(),
       name: save.name,
       width: save.width,
       height: save.height,
