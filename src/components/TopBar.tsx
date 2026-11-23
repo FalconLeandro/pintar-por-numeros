@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Download, Eye, ImagePlus, Library, LocateFixed, Moon, Redo2, SlidersHorizontal, Sun, Undo2 } from 'lucide-react'
+import { Download, Eye, Home, ImagePlus, Library, LocateFixed, Redo2, SlidersHorizontal, Undo2 } from 'lucide-react'
+import { ThemeToggle } from './ThemeToggle.tsx'
 import { exportPainting } from '../utils/exportPng.ts'
 import { usePaintStore } from '../store/usePaintStore.ts'
+import { useRoomStore } from '../store/useRoomStore.ts'
 
 export function TopBar() {
   const project = usePaintStore((state) => state.project)
@@ -53,6 +54,9 @@ export function TopBar() {
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+          <button type="button" className="icon-action" onClick={() => useRoomStore.getState().go('room')} aria-label="Volver a la habitación" title="Habitación">
+            <Home size={16} />
+          </button>
           <ThemeToggle />
           <button type="button" className="studio-action collection-action" onClick={() => openCollection()}>
             <Library size={16} />
@@ -103,30 +107,7 @@ export function TopBar() {
   )
 }
 
-function ThemeToggle() {
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
-
-  function toggle() {
-    const next = !document.documentElement.classList.contains('dark')
-    document.documentElement.classList.toggle('dark', next)
-    localStorage.setItem('atelier-theme', next ? 'dark' : 'light')
-    setDark(next)
-  }
-
-  return (
-    <button
-      type="button"
-      className="icon-action"
-      onClick={toggle}
-      aria-label={dark ? 'Activar modo claro' : 'Activar modo oscuro'}
-      title={dark ? 'Modo claro' : 'Modo oscuro'}
-    >
-      {dark ? <Sun size={16} /> : <Moon size={16} />}
-    </button>
-  )
-}
-
-function BlackCat() {
+export function BlackCat() {
   return (
     <svg className="memito-cat h-11 w-[3.35rem] shrink-0" viewBox="0 0 78 52" aria-hidden="true">
       <g className="cat-sit">

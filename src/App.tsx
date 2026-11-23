@@ -4,8 +4,13 @@ import { CanvasWorkspace } from './components/CanvasWorkspace.tsx'
 import { ColorPalette } from './components/ColorPalette.tsx'
 import { CollectionModal } from './components/CollectionModal.tsx'
 import { ImageUploaderModal } from './components/ImageUploaderModal.tsx'
+import { CrosswordView } from './components/room/CrosswordView.tsx'
+import { DrawerView } from './components/room/DrawerView.tsx'
+import { RecordPlayer } from './components/room/RecordPlayer.tsx'
+import { RoomScene } from './components/room/RoomScene.tsx'
 import { TopBar } from './components/TopBar.tsx'
 import { usePaintStore } from './store/usePaintStore.ts'
+import { useRoomStore } from './store/useRoomStore.ts'
 
 export default function App() {
   const hydrated = usePaintStore((state) => state.hydrated)
@@ -14,6 +19,7 @@ export default function App() {
   const restored = usePaintStore((state) => state.restored)
   const error = usePaintStore((state) => state.error)
   const notice = usePaintStore((state) => state.notice)
+  const place = useRoomStore((state) => state.place)
   const [dragOver, setDragOver] = useState(false)
   const dragDepth = useRef(0)
 
@@ -26,12 +32,16 @@ export default function App() {
 
     const onKeyDown = (event: KeyboardEvent) => {
       const store = usePaintStore.getState()
+      const room = useRoomStore.getState()
       if (event.key === 'Escape') {
-        if (store.processing) store.cancelProcessing()
-        else if (store.collectionOpen) store.closeCollection()
-        else if (store.modalOpen) store.closeModal()
+        if (room.place === 'paint' && store.processing) store.cancelProcessing()
+        else if (room.place === 'paint' && store.collectionOpen) store.closeCollection()
+        else if (room.place === 'paint' && store.modalOpen) store.closeModal()
+        else if (room.playerOpen) room.setPlayerOpen(false)
+        else if (room.place !== 'room') room.go('room')
         return
       }
+      if (room.place !== 'paint') return
       if (typing(event.target) || store.modalOpen || store.collectionOpen || store.processing) return
       if (event.code === 'Space') {
         if (event.target instanceof HTMLElement && event.target.closest('button, a')) return
@@ -78,8 +88,8 @@ export default function App() {
     return (
       <div className="grid h-dvh place-items-center bg-paper">
         <div className="text-center">
-          <p className="font-display text-4xl">Atelier</p>
-          <p className="mt-2 text-sm text-ink-soft">Preparando el estudio…</p>
+          <p className="font-display text-4xl">El Atelier de Memito</p>
+          <p className="mt-2 text-sm text-ink-soft">Preparando la habitación…</p>
         </div>
       </div>
     )
@@ -106,27 +116,38 @@ export default function App() {
         dragDepth.current = 0
         setDragOver(false)
         const file = event.dataTransfer.files[0]
-        if (file) usePaintStore.getState().queueFile(file)
+        if (file) {
+          useRoomStore.getState().go('paint')
+          usePaintStore.getState().queueFile(file)
+        }
       }}
     >
-      <TopBar />
-      {restored && project && (
-        <div className="flex items-center justify-between gap-3 bg-studio px-4 py-2 text-sm text-foam">
-          <p>Recuperamos la pintura guardada en este navegador.</p>
-          <div className="flex gap-2">
-            <button type="button" className="rounded-full px-3 py-1 hover:bg-white/10" onClick={() => usePaintStore.getState().dismissRestored()}>
-              Seguir
-            </button>
-            <button type="button" className="rounded-full bg-foam px-3 py-1 text-ink" onClick={() => usePaintStore.getState().discard()}>
-              Descartar
-            </button>
-          </div>
-        </div>
+      {place === 'room' && <RoomScene />}
+      {place === 'drawer' && <DrawerView />}
+      {place === 'crossword' && <CrosswordView />}
+      {place === 'paint' && (
+        <>
+          <TopBar />
+          {restored && project && (
+            <div className="flex items-center justify-between gap-3 bg-studio px-4 py-2 text-sm text-foam">
+              <p>Recuperamos la pintura guardada en este navegador.</p>
+              <div className="flex gap-2">
+                <button type="button" className="rounded-full px-3 py-1 hover:bg-white/10" onClick={() => usePaintStore.getState().dismissRestored()}>
+                  Seguir
+                </button>
+                <button type="button" className="rounded-full bg-foam px-3 py-1 text-ink" onClick={() => usePaintStore.getState().discard()}>
+                  Descartar
+                </button>
+              </div>
+            </div>
+          )}
+          <CanvasWorkspace />
+          <ColorPalette />
+          <ImageUploaderModal />
+          <CollectionModal />
+        </>
       )}
-      <CanvasWorkspace />
-      <ColorPalette />
-      <ImageUploaderModal />
-      <CollectionModal />
+      <RecordPlayer />
 
       {processing && (
         <div className="absolute inset-0 z-50 grid place-items-center bg-ink/45 p-4 backdrop-blur-[2px]">

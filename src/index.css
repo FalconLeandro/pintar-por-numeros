@@ -205,6 +205,16 @@ html.dark .memito-cat .cat-whisker {
   }
 }
 
+@keyframes vinyl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.vinyl-on {
+  animation: vinyl-spin 2.8s linear infinite;
+}
+
 @keyframes cat-blink {
   0%,
   7%,
@@ -241,5 +251,9 @@ html.dark .memito-cat .cat-whisker {
 
   .memito-cat .cat-eye {
     animation: cat-blink 4.6s linear infinite !important;
+  }
+
+  .vinyl-on {
+    animation: vinyl-spin 2.8s linear infinite !important;
   }
 }

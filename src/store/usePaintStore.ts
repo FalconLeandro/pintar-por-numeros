@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ProjectData, Tool, ViewCommand, WorkerDone, WorkerIn, WorkerOut } from '../types.ts'
+import { archiveWork } from '../room/archiveWork.ts'
 import { clearProject, loadProject, projectToSave, saveProject } from '../utils/idb.ts'
 
 interface ProcessingState {
@@ -371,7 +372,12 @@ export const usePaintStore = create<PaintStore>((set, get) => ({
     }
     set({ activeColor: nextColor, canUndo: history.length > 0, canRedo: false })
     if (globalFilled >= project.pixelCount && project.pixelCount > 0) {
-      flash('Paleta completa. Ya podés exportar la obra.')
+      const painted = get().painted
+      if (painted) {
+        void archiveWork(project, painted)
+          .then((result) => flash(result === 'updated' ? 'Actualicé la obra del cajón.' : 'La obra quedó en el cajón.'))
+          .catch(() => flash('La obra está completa. No pude guardarla en el cajón.'))
+      }
     }
     scheduleSave()
   },
