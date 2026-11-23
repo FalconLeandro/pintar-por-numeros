@@ -207,12 +207,15 @@ export async function loadFrames() {
   const tx = db.transaction('meta', 'readonly')
   const store = tx.objectStore('meta')
   let frames = (await requestToPromise(store.get(framesKey()))) as FrameSlot[] | undefined
-  if ((!frames || frames.length !== 3) && scope && scope === legacyRoomId()) {
+  const usable = (value: FrameSlot[] | undefined) => (Array.isArray(value) && value.length >= 1 && value.length <= 6 ? value : null)
+  let picked = usable(frames)
+  if (!picked && scope && scope === legacyRoomId()) {
     frames = (await requestToPromise(store.get('frames'))) as FrameSlot[] | undefined
+    picked = usable(frames)
   }
   await txDone(tx)
   db.close()
-  return frames && frames.length === 3 ? frames : [...EMPTY_FRAMES]
+  return picked ?? [...EMPTY_FRAMES]
 }
 
 export async function saveFrames(frames: FrameSlot[]) {

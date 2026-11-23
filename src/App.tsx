@@ -10,6 +10,7 @@ import { RecordPlayer } from './components/room/RecordPlayer.tsx'
 import { RoomScene } from './components/room/RoomScene.tsx'
 import { TopBar } from './components/TopBar.tsx'
 import { Door } from './components/room/Door.tsx'
+import { LiveChat } from './components/room/LiveChat.tsx'
 import { useLiveStore } from './room/live.ts'
 import { usePaintStore } from './store/usePaintStore.ts'
 import { useRoomStore } from './store/useRoomStore.ts'
@@ -24,6 +25,7 @@ export default function App() {
   const place = useRoomStore((state) => state.place)
   const sessionReady = useLiveStore((state) => state.ready)
   const admitted = useLiveStore((state) => state.admitted)
+  const palette = useLiveStore((state) => state.look.palette)
   const boot = useLiveStore((state) => state.boot)
   const [dragOver, setDragOver] = useState(false)
   const dragDepth = useRef(0)
@@ -108,7 +110,8 @@ export default function App() {
 
   return (
     <div
-      className="relative flex h-dvh flex-col"
+      data-room-palette={palette}
+      className="relative flex h-dvh flex-col pb-36 lg:pb-0 lg:pl-[22rem]"
       onDragEnter={(event) => {
         event.preventDefault()
         dragDepth.current += 1
@@ -159,6 +162,7 @@ export default function App() {
         </>
       )}
       <RecordPlayer />
+      <LiveChat />
 
       {processing && (
         <div className="absolute inset-0 z-50 grid place-items-center bg-ink/45 p-4 backdrop-blur-[2px]">

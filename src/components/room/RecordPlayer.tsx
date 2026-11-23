@@ -288,7 +288,9 @@ export function RecordPlayer() {
   }
 
   return (
-    <section className={`fixed right-3 z-30 w-[min(22rem,calc(100vw-1.5rem))] ${place === 'paint' ? 'bottom-24' : 'bottom-3'}`}>
+    <section
+      className={`fixed right-3 z-30 w-[min(22rem,calc(100vw-1.5rem))] lg:w-[min(22rem,calc(100vw-24rem))] ${place === 'paint' ? 'bottom-52 lg:bottom-24' : 'bottom-40 lg:bottom-3'}`}
+    >
       <div className="overflow-hidden rounded-3xl border border-line bg-foam/95 shadow-xl backdrop-blur">
         <div className="flex items-center gap-2 px-3 py-2">
           <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink text-[10px] text-foam ${playing ? 'vinyl-on' : ''}`}>

@@ -15,6 +15,7 @@ import {
   type FrameSlot,
 } from '../utils/roomDb.ts'
 import type { ProjectData } from '../types.ts'
+import { DEFAULT_LOOK, normalizeLook, type RoomLook } from './look.ts'
 
 const OWNER_KEY = 'atelier-owner'
 const GUEST_KEY = 'atelier-guest'
@@ -24,6 +25,13 @@ const CURRENT_KEY = 'atelier-current'
 
 export type LiveRole = 'owner' | 'guest'
 export type DoorMode = 'create' | 'enter'
+
+export interface ChatMessage {
+  id: string
+  role: LiveRole
+  text: string
+  at: number
+}
 
 export interface Membership {
   id: string
@@ -61,6 +69,9 @@ interface LiveStore {
   memberships: Membership[]
   mode: DoorMode
   pendingCode: string
+  look: RoomLook
+  messages: ChatMessage[]
+  setLook: (patch: Partial<RoomLook>) => void
   boot: () => Promise<void>
   createRoom: (keyword: string, name: string) => Promise<void>
   enter: (keyword: string, code: string) => Promise<void>
@@ -92,6 +103,7 @@ let stopRoom = () => {}
 let pollTimer = 0
 let syncStarted = false
 let booting: Promise<void> | null = null
+let lookHold = false
 
 export const useLiveStore = create<LiveStore>((set, get) => ({
   ready: false,
@@ -107,6 +119,18 @@ export const useLiveStore = create<LiveStore>((set, get) => ({
   memberships: loadMemberships(),
   mode: 'create',
   pendingCode: '',
+  look: DEFAULT_LOOK,
+  messages: [],
+  setLook: (patch) => {
+    const current = get().look
+    const look = normalizeLook({
+      ...current,
+      ...patch,
+      objects: { ...current.objects, ...(patch.objects ?? {}) },
+    })
+    set({ look })
+    if (!suppress && get().role === 'owner') queue({ look })
+  },
   boot: () => {
     if (booting) return booting
     booting = runBoot().finally(() => {
@@ -251,6 +275,8 @@ async function openMembership(member: Membership, seed: boolean) {
     crossword: null,
     ownerOnline: false,
     guestOnline: false,
+    look: DEFAULT_LOOK,
+    messages: [],
   })
   await startSync()
 }
@@ -356,10 +382,13 @@ async function flush() {
   const patch = pending
   pending = {}
   if (!Object.keys(patch).length || !useLiveStore.getState().admitted) return
+  if (patch.look) lookHold = true
   try {
     await call({ action: 'push', patch })
   } catch (error) {
     useLiveStore.setState({ error: messageOf(error) })
+  } finally {
+    if (patch.look) lookHold = false
   }
 }
 
@@ -369,6 +398,7 @@ function stopSync() {
   window.clearInterval(pollTimer)
   window.clearTimeout(pushTimer)
   pending = {}
+  lookHold = false
   lastMask = ''
   roomPaintId = null
   stopPaint()
@@ -420,12 +450,23 @@ async function pull(initial: boolean) {
     frames: FrameSlot[]
     crossword: Record<string, string>
     paint: { shareId: string; name: string; percent: number; mask: string; ready: boolean } | null
+    look?: unknown
+  }
+  const messages = Array.isArray(data.chat) ? (data.chat as ChatMessage[]) : []
+  if (JSON.stringify(messages) !== JSON.stringify(useLiveStore.getState().messages)) {
+    useLiveStore.setState({ messages })
   }
   const roomId = useLiveStore.getState().roomId
   if (typeof data.name === 'string' && roomId) {
     const rows = loadMemberships().map((item) => (item.id === roomId ? { ...item, name: data.name as string } : item))
     localStorage.setItem(ROOMS_KEY, JSON.stringify(rows))
     useLiveStore.setState({ roomName: data.name, memberships: rows })
+  }
+  const look = normalizeLook(body.look)
+  if (!pending.look && !lookHold && JSON.stringify(look) !== JSON.stringify(useLiveStore.getState().look)) {
+    suppress += 1
+    useLiveStore.setState({ look })
+    suppress -= 1
   }
   useLiveStore.setState({
     ownerOnline: Boolean(data.ownerOnline),
@@ -641,6 +682,13 @@ export function beginRemoteFollow() {
   window.setTimeout(() => {
     following = false
   }, 1200)
+}
+
+export async function sendChat(text: string) {
+  if (!useLiveStore.getState().admitted) return
+  const data = await call({ action: 'say', text })
+  const messages = Array.isArray(data.chat) ? (data.chat as ChatMessage[]) : []
+  useLiveStore.setState({ messages, error: null })
 }
 
 export async function publishFrames() {

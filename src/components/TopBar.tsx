@@ -113,7 +113,9 @@ export function TopBar() {
   )
 }
 
-export function BlackCat() {
+export function BlackCat({ tone = 'negra' }: { tone?: 'negra' | 'blanca' }) {
+  const fur = tone === 'blanca' ? '#f6f1e8' : '#161311'
+  const line = tone === 'blanca' ? '#2a241e' : '#161311'
   return (
     <svg className="memito-cat h-11 w-[3.35rem] shrink-0" viewBox="0 0 78 52" aria-hidden="true">
       <g className="cat-sit">
@@ -121,26 +123,26 @@ export function BlackCat() {
           className="cat-tail"
           d="M50 34c9 2 18-4 17-13-1-7-8-10-11-4"
           fill="none"
-          stroke="#161311"
+          stroke={line}
           strokeWidth="5.2"
           strokeLinecap="round"
         />
-        <ellipse cx="42" cy="37" rx="16" ry="9" fill="#161311" />
-        <ellipse cx="34" cy="43.2" rx="4.2" ry="2.3" fill="#161311" />
-        <ellipse cx="45" cy="43.6" rx="4.2" ry="2.3" fill="#161311" />
+        <ellipse cx="42" cy="37" rx="16" ry="9" fill={fur} />
+        <ellipse cx="34" cy="43.2" rx="4.2" ry="2.3" fill={fur} />
+        <ellipse cx="45" cy="43.6" rx="4.2" ry="2.3" fill={fur} />
         <g className="cat-head">
-          <circle cx="26" cy="23" r="12" fill="#161311" />
-          <path className="cat-ear" d="M16 16.5 20.2 5.2 27.2 15.6z" fill="#161311" />
-          <path d="M27 15.2 33.4 4.4 37.6 16.4z" fill="#161311" />
+          <circle cx="26" cy="23" r="12" fill={fur} />
+          <path className="cat-ear" d="M16 16.5 20.2 5.2 27.2 15.6z" fill={fur} />
+          <path d="M27 15.2 33.4 4.4 37.6 16.4z" fill={fur} />
           <path d="M18.2 13.6 20.4 8.2 24.2 14.2z" fill="#d9899c" />
           <path d="M29.4 12.4 32.4 7.2 35.6 13.6z" fill="#d9899c" />
           <g className="cat-eye">
             <ellipse cx="21.4" cy="23.2" rx="1.8" ry="2.25" fill="#f3c56b" />
-            <ellipse cx="21.2" cy="23.6" rx="0.75" ry="1.25" fill="#161311" />
+            <ellipse cx="21.2" cy="23.6" rx="0.75" ry="1.25" fill={line} />
           </g>
           <g className="cat-eye cat-eye-late">
             <ellipse cx="30.2" cy="23.2" rx="1.8" ry="2.25" fill="#f3c56b" />
-            <ellipse cx="30" cy="23.6" rx="0.75" ry="1.25" fill="#161311" />
+            <ellipse cx="30" cy="23.6" rx="0.75" ry="1.25" fill={line} />
           </g>
           <path d="M24.6 26.6 26.1 28.3 27.7 26.6z" fill="#e7a0b0" />
           <path d="M25.2 28.6c.7.7 1.6.7 2.3 0" fill="none" stroke="#f6d8c8" strokeWidth="0.7" strokeLinecap="round" />
@@ -149,7 +151,7 @@ export function BlackCat() {
           d="M16 24.5H6.5M16.6 27.4H5.5M35.6 24.8h9M35.2 27.6h10"
           fill="none"
           className="cat-whisker"
-          stroke="#4a4038"
+          stroke={tone === 'blanca' ? '#6d6258' : '#4a4038'}
           strokeWidth="0.75"
           strokeLinecap="round"
         />

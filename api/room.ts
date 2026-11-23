@@ -12,6 +12,18 @@ const EMPTY = {
   frames: [null, null, null] as ({ kind: 'work' | 'photo'; id: string } | null)[],
   crossword: {} as Record<string, string>,
   paint: null as null | { shareId: string; name: string; percent: number; mask: string; ready: boolean },
+  look: {
+    layout: 'clasica',
+    size: 'mediano',
+    background: false,
+    palette: 'papel',
+    frameCount: 3,
+    welcome: 'Un lugar para quedarse un rato.',
+    objects: { easel: true, drawer: true, player: true, crossword: true },
+    frameStyle: 'tinta',
+    cat: 'negra',
+    dedication: '',
+  },
 }
 
 type Body = typeof EMPTY
@@ -135,6 +147,7 @@ async function migrate() {
   await sql`alter table room_lock add column if not exists name text not null default 'Mi habitación'`
   await sql`alter table room_images add column if not exists room_id integer not null default 1`
   await sql`alter table room_geometry add column if not exists room_id integer not null default 1`
+  await sql`alter table room_live add column if not exists chat jsonb not null default '[]'::jsonb`
   const missing = await sql`select id from room_lock where public_id is null`
   for (const row of missing) {
     const id = Number((row as { id: number }).id)
@@ -169,15 +182,83 @@ async function authorize(request: Request, room: RoomLock): Promise<Role | null>
   return (await matches(token, room.owner_salt, room.owner_hash)) ? 'owner' : null
 }
 
+function asLook(value: unknown) {
+  const source = value && typeof value === 'object' ? (value as Partial<Body['look']>) : {}
+  const objects = source.objects && typeof source.objects === 'object' ? source.objects : EMPTY.look.objects
+  const count = Number(source.frameCount)
+  const welcome = typeof source.welcome === 'string' ? source.welcome.trim().replace(/\s+/g, ' ').slice(0, 80) : ''
+  const dedication = typeof source.dedication === 'string' ? source.dedication.trim().replace(/\s+/g, ' ').slice(0, 120) : ''
+  const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T) =>
+    allowed.includes(value as T) ? (value as T) : fallback
+  return {
+    layout: oneOf(source.layout, ['clasica', 'ancha', 'torre'] as const, EMPTY.look.layout),
+    size: oneOf(source.size, ['chico', 'mediano', 'grande'] as const, EMPTY.look.size),
+    background: Boolean(source.background),
+    palette: oneOf(source.palette, ['papel', 'noche', 'rosa', 'salvia', 'mar'] as const, EMPTY.look.palette),
+    frameCount: Number.isInteger(count) && count >= 1 && count <= 6 ? count : EMPTY.look.frameCount,
+    welcome: welcome || EMPTY.look.welcome,
+    objects: {
+      easel: objects.easel !== false,
+      drawer: objects.drawer !== false,
+      player: objects.player !== false,
+      crossword: objects.crossword !== false,
+    },
+    frameStyle: oneOf(source.frameStyle, ['tinta', 'linea', 'madera', 'oro'] as const, EMPTY.look.frameStyle),
+    cat: oneOf(source.cat, ['negra', 'blanca', 'ninguna'] as const, EMPTY.look.cat),
+    dedication,
+  }
+}
+
 function asBody(value: unknown): Body {
   const source = value && typeof value === 'object' ? (value as Partial<Body>) : {}
   return {
     playback: source.playback ?? EMPTY.playback,
     tracks: Array.isArray(source.tracks) ? source.tracks : [],
-    frames: Array.isArray(source.frames) && source.frames.length === 3 ? source.frames : EMPTY.frames,
+    frames: Array.isArray(source.frames) && source.frames.length >= 1 && source.frames.length <= 6 ? source.frames : EMPTY.frames,
     crossword: source.crossword && typeof source.crossword === 'object' ? source.crossword : {},
     paint: source.paint ?? null,
+    look: asLook(source.look),
   }
+}
+
+type ChatMessage = { id: string; role: Role; text: string; at: number }
+
+function asChat(value: unknown): ChatMessage[] {
+  let source = value
+  if (typeof source === 'string') {
+    try {
+      source = JSON.parse(source) as unknown
+    } catch {
+      return []
+    }
+  }
+  if (!Array.isArray(source)) return []
+  return source
+    .map((item) => {
+      const row = item && typeof item === 'object' ? (item as Partial<ChatMessage>) : {}
+      const text = typeof row.text === 'string' ? row.text.trim().replace(/\s+/g, ' ').slice(0, 240) : ''
+      const id = typeof row.id === 'string' ? row.id.slice(0, 40) : ''
+      if (!text || !id) return null
+      return { id, role: row.role === 'owner' ? 'owner' : 'guest', text, at: Number(row.at) || 0 } satisfies ChatMessage
+    })
+    .filter((item): item is ChatMessage => item !== null)
+    .slice(-40)
+}
+
+async function notePresence(roomId: number, role: Role) {
+  const sql = sqlClient()
+  const rows = await sql`
+    select
+      coalesce(owner_seen > now() - interval '8 seconds', false) as owner_online,
+      coalesce(guest_seen > now() - interval '8 seconds', false) as guest_online
+    from room_live where id = ${roomId}
+  `
+  const row = rows[0] as { owner_online: boolean; guest_online: boolean } | undefined
+  if (row && !row.owner_online && !row.guest_online) {
+    await sql`update room_live set chat = '[]'::jsonb where id = ${roomId}`
+  }
+  if (role === 'owner') await sql`update room_live set owner_seen = now() where id = ${roomId}`
+  else await sql`update room_live set guest_seen = now() where id = ${roomId}`
 }
 
 async function insertRoom(name: string, keywordSeal: { salt: string; hash: string }, ownerSeal: { salt: string; hash: string }) {
@@ -268,8 +349,7 @@ export async function handleRoom(request: Request) {
     if (!room) return json(404, { error: 'No encontré esa habitación.' })
     const role = await authorize(request, room)
     if (!role) return json(401, { error: 'La puerta se cerró. Volvé a entrar.' })
-    if (role === 'owner') await sql`update room_live set owner_seen = now() where id = ${room.id}`
-    else await sql`update room_live set guest_seen = now() where id = ${room.id}`
+    await notePresence(room.id, role)
 
     if (action === 'keyword') {
       if (role !== 'owner') return json(403, { error: 'Solo el dueño puede cambiar la palabra.' })
@@ -295,7 +375,7 @@ export async function handleRoom(request: Request) {
 
     if (action === 'pull') {
       const rows = await sql`
-        select revision, body, updated_by,
+        select revision, body, chat, updated_by,
           owner_seen > now() - interval '8 seconds' as owner_online,
           guest_seen > now() - interval '8 seconds' as guest_online,
           (extract(epoch from now()) * 1000)::bigint as server_now
@@ -308,6 +388,7 @@ export async function handleRoom(request: Request) {
       const row = rows[0] as {
         revision: string
         body: Body
+        chat: unknown
         updated_by: string | null
         owner_online: boolean
         guest_online: boolean
@@ -316,6 +397,7 @@ export async function handleRoom(request: Request) {
       return json(200, {
         revision: Number(row.revision),
         body: asBody(row.body),
+        chat: asChat(row.chat),
         updatedBy: row.updated_by,
         ownerOnline: Boolean(row.owner_online),
         guestOnline: Boolean(row.guest_online),
@@ -352,7 +434,8 @@ export async function handleRoom(request: Request) {
           .slice(0, 40)
           .map((track) => ({ videoId: String(track.videoId).slice(0, 20), title: String(track.title).slice(0, 140) }))
       }
-      if (Array.isArray(patch.frames) && patch.frames.length === 3) body.frames = patch.frames as Body['frames']
+      if (Array.isArray(patch.frames) && patch.frames.length >= 1 && patch.frames.length <= 6) body.frames = patch.frames as Body['frames']
+      if (patch.look && role === 'owner') body.look = asLook(patch.look)
       if (patch.crossword && typeof patch.crossword === 'object') {
         const incoming = patch.crossword as Record<string, unknown>
         for (const [key, value] of Object.entries(incoming).slice(0, 80)) {
@@ -387,6 +470,28 @@ export async function handleRoom(request: Request) {
         returning revision
       `
       return json(200, { revision: Number((saved[0] as { revision: string }).revision) })
+    }
+
+    if (action === 'say') {
+      const text = typeof payload.text === 'string' ? payload.text.trim().replace(/\s+/g, ' ').slice(0, 240) : ''
+      if (!text) return json(400, { error: 'Escribí algo.' })
+      const message = { id: randomBytes(6).toString('hex'), role, text, at: Date.now() }
+      const saved = await sql`
+        update room_live
+        set chat = (
+          select coalesce(jsonb_agg(item order by ord), '[]'::jsonb)
+          from (
+            select item, ord
+            from jsonb_array_elements(case when jsonb_typeof(chat) = 'array' then chat else '[]'::jsonb end)
+              with ordinality as t(item, ord)
+            order by ord desc
+            limit 39
+          ) kept
+        ) || ${JSON.stringify([message])}::jsonb
+        where id = ${room.id}
+        returning chat
+      `
+      return json(200, { chat: asChat((saved[0] as { chat: unknown } | undefined)?.chat) })
     }
 
     if (action === 'image-put') {

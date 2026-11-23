@@ -48,6 +48,91 @@ html.dark body {
   background-image: radial-gradient(rgba(255, 236, 210, 0.04) 0.7px, transparent 0.7px);
 }
 
+[data-room-palette='noche'] {
+  --color-paper: #14110e;
+  --color-paper-deep: #2a231c;
+  --color-foam: #1c1814;
+  --color-ink: #f4ece1;
+  --color-ink-soft: #cbbba8;
+  --color-studio: #d7b56d;
+  --color-studio-deep: #b89245;
+  --color-coral: #f08458;
+  --color-line: #3c332b;
+  color-scheme: dark;
+}
+
+[data-room-palette='rosa'] {
+  --color-paper: #f8efe8;
+  --color-paper-deep: #f0ddd4;
+  --color-foam: #fff8f4;
+  --color-ink: #3a242b;
+  --color-ink-soft: #7a5b64;
+  --color-studio: #a85b6d;
+  --color-studio-deep: #864556;
+  --color-coral: #e36a3a;
+  --color-line: #ead4cb;
+}
+
+html.dark [data-room-palette='rosa'] {
+  --color-paper: #24181c;
+  --color-paper-deep: #3a2830;
+  --color-foam: #2c2026;
+  --color-ink: #f8efe8;
+  --color-ink-soft: #e0c4cc;
+  --color-studio: #e7a0b0;
+  --color-studio-deep: #d9899c;
+  --color-coral: #f08458;
+  --color-line: #4a333b;
+}
+
+[data-room-palette='salvia'] {
+  --color-paper: #e7efe6;
+  --color-paper-deep: #d5e3d2;
+  --color-foam: #f4f8f3;
+  --color-ink: #1c2a22;
+  --color-ink-soft: #516259;
+  --color-studio: #3f6b52;
+  --color-studio-deep: #2d4e3b;
+  --color-coral: #e36a3a;
+  --color-line: #c9d8c6;
+}
+
+html.dark [data-room-palette='salvia'] {
+  --color-paper: #121a15;
+  --color-paper-deep: #243028;
+  --color-foam: #1a2420;
+  --color-ink: #e7efe6;
+  --color-ink-soft: #b7c9bc;
+  --color-studio: #7dba96;
+  --color-studio-deep: #5e9a78;
+  --color-coral: #f08458;
+  --color-line: #314038;
+}
+
+[data-room-palette='mar'] {
+  --color-paper: #e6eef2;
+  --color-paper-deep: #d2e0e8;
+  --color-foam: #f4f8fa;
+  --color-ink: #15232c;
+  --color-ink-soft: #4d6270;
+  --color-studio: #1f5f78;
+  --color-studio-deep: #16485c;
+  --color-coral: #e36a3a;
+  --color-line: #c5d5df;
+}
+
+html.dark [data-room-palette='mar'] {
+  --color-paper: #10181e;
+  --color-paper-deep: #1e2c36;
+  --color-foam: #172229;
+  --color-ink: #e6eef2;
+  --color-ink-soft: #b7c8d2;
+  --color-studio: #7eb6cc;
+  --color-studio-deep: #5a9bb4;
+  --color-coral: #f08458;
+  --color-line: #2c3e4a;
+}
+
 button,
 input {
   font-family: inherit;
